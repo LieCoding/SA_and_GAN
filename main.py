@@ -13,8 +13,8 @@ h,w = 192, 256     # 需要输入网络的图片大小，会在读取的时候re
 a = 0.2    # 超参数,噪声所占比例
 train_data_rate = 0.8    # 训练集所占比例，划分训练集和测试集
 
-data_dir = './dataset_new/image'    #选择数据库
-# data_dir = './dataset_mini/image'    # 小样本测试程序用，共12张图片
+# data_dir = './dataset_new/image'    #选择数据库
+data_dir = './dataset_mini/image'    # 小样本测试程序用，共12张图片
 
 data_process = False      #是否使用数据增强
 log_dir = 'log/train.log'   # 设置日志保存路径
