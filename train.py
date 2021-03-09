@@ -8,20 +8,20 @@ from tflib import conv2d
 
 tf.reset_default_graph()
 
-epoch =350   #总迭代次数
-batch_size =32
+epoch =500   #总迭代次数
+batch_size =6
 h,w = 192, 256     # 需要输入网络的图片大小，会在读取的时候resize
 a = 0.3    # 超参数,噪声所占比例
 train_data_rate = 0.8    # 训练集所占比例，划分训练集和测试集
 
 data_dir = './dataset_new/image'    #选择数据库
-#data_dir = './dataset_mini/image'    # 小样本测试程序用，共12张图片
+# data_dir = './dataset_mini/image'    # 小样本测试程序用，共12张图片
 #
 data_process = True      #是否使用数据增强
 log_dir = 'log/train.log'   # 设置日志保存路径
 
 train_or_test = 'train'   # 训练or测试   输入：'train' or 'test'
-erly_stop_epoch = 200   #早停，连续200个epoch精度没有提升就停止训练
+erly_stop_epoch = 250   #早停，连续200个epoch精度没有提升就停止训练
 
  # 初始化log
 train_log = ops.Logger(log_dir,level='debug')
@@ -114,18 +114,17 @@ train_log.info('-----train images:{} ,test images:{} ------'.format(len(train_im
 train_log.info('------------loading train and test data-------')
 # 读取所有的训练集,返回tensor格式
 train_data, train_label = reader.load_data(data_dir,train_images,output_size=(w, h),data_process= data_process)
-# 读取所有的测试集,返回tensor格式,测试集不增强
-test_data, test_label = reader.load_data(data_dir,test_images,output_size=(w, h),data_process= False)
+
+
+# 读取所有的测试集,返回np格式,测试集不增强
+test_data, test_label = reader.load_test_data(data_dir,test_images,output_size=(w, h),)
+
 train_log.info('------------loading success----------')
 
 
 # 设置训练数据batch形式
 train_input_queue = tf.train.slice_input_producer([train_data, train_label], shuffle=True)
 train_image_batch, train_label_batch = tf.train.batch(train_input_queue, batch_size=batch_size, num_threads=8,
-                                                                capacity=12,allow_smaller_final_batch=True)
-# 设置测试数据batch形式
-test_input_queue = tf.train.slice_input_producer([test_data, test_label],shuffle=False)
-test_image_batch, test_label_batch = tf.train.batch(test_input_queue, batch_size=batch_size,num_threads=8,
                                                                 capacity=12,allow_smaller_final_batch=True)
 
 
@@ -174,7 +173,7 @@ with tf.Session() as sess:
             start = time.time()
 
     # #         循环迭代次数
-            for j in range(len(train_images)//batch_size+1):
+            for j in range(int(len(train_images)/batch_size)+1):
 
         #         由于批次类型为张量  这里先使用 run 获取到数据信息后再feed到网络中训练，
                 train_feed_image,train_feed_label = sess.run([train_image_batch, train_label_batch])
@@ -213,8 +212,18 @@ with tf.Session() as sess:
             all_t_predict = []
             all_t_image = []
 
-            for itor in range(len(test_images)//batch_size+1):
-                test_feed_data,test_feed_label = sess.run([test_image_batch, test_label_batch])
+
+            index = 0
+            for itor in range(int(len(test_data)/batch_size)+1):
+
+                if index + batch_size > len(test_data):
+                    test_feed_data = test_data[index:]
+                    test_feed_label = test_label[index:]
+                else:
+                    test_feed_data = test_data[index:index+batch_size]
+                    test_feed_label = test_label[index:index+batch_size]
+
+                index+=batch_size
 
             # 喂入网络的数据
                 test_feeds = {image: test_feed_data, label: test_feed_label}
@@ -232,8 +241,8 @@ with tf.Session() as sess:
             precision,recall,IoU,f1ccore = ops.get_acc(t_label,t_predict)
             # ----------------------------------------------------------------------
 
-            # 测试集acc上升就保存模型和测试图片
-            if best_acc < precision:
+            # 测试集acc上升就保存模型和测试图片 50 epoch后再统计
+            if best_acc < precision and current_epoch>50:
                 saver.save(sess, './model/fcrn.ckpt', global_step=current_epoch)
                 best_acc = precision
                 best_epoch = current_epoch
@@ -274,13 +283,16 @@ with tf.Session() as sess:
                 cv2.imwrite('./data_save/final/test/' + str(i) +  '_predict' + '.png' ,best_pre[i] )
 
             train_log.info("-------------------save best image in  ./data_save/final/test/ ---------------------")
+            train_log.info("-------------------best epoch:"+str(best_epoch)+" bset test acc:{} recall:{} IoU:{} f1ccore:{}".format(_best_accs[0],
+                                                                                    _best_accs[1],_best_accs[2],_best_accs[3]))
+            
+            train_log.info("-------------------best epoch:"+str(best_epoch)+" bset test acc:{} recall:{} IoU:{} f1ccore:{}".format(_best_accs[0],
+                                                                                    _best_accs[1],_best_accs[2],_best_accs[3]))
+
         except:
             train_log.info("-------------------not update best data  ---------------------")
 
         train_log.info("-------------------train finish  ---------------------")
-        train_log.info("-------------------best epoch:"+str(best_epoch)+" bset test acc:{} recall:{} IoU:{} f1ccore:{}".format(_best_accs[0],
-                                                                                    _best_accs[1],_best_accs[2],_best_accs[3]))
-
 
     elif train_or_test=='test':
 
@@ -304,9 +316,17 @@ with tf.Session() as sess:
         all_t_predict = []
         all_t_image = []
 
-        for itor in range(len(test_images)//batch_size+1):
-            test_feed_data,test_feed_label = sess.run([test_image_batch, test_label_batch])
+        index = 0
+        for itor in range(int(len(test_data)/batch_size)+1):
 
+            if index + batch_size > len(test_data):
+                test_feed_data = test_data[index:]
+                test_feed_label = test_label[index:]
+            else:
+                test_feed_data = test_data[index:index+batch_size]
+                test_feed_label = test_label[index:index+batch_size]
+
+            index+=batch_size
         # 喂入网络的数据
             test_feeds = {image: test_feed_data, label: test_feed_label}
             _test_loss_decoder,_test_input_image,_test_input_label,_test_output_real_map = sess.run([ test_loss_decoder,
@@ -327,9 +347,9 @@ with tf.Session() as sess:
         # 保存图片
         for i in range(len(all_t_image)):
 
-                cv2.imwrite('./test_data/test/' + str(i) +  '_image' + '.png' ,all_t_image[i] )
-                cv2.imwrite('./test_data/test/' + str(i) +  '_label' + '.png' ,all_t_label[i] )
-                cv2.imwrite('./test_data/test/' + str(i) +  '_predict' + '.png' ,all_t_image[i] )
+            cv2.imwrite('./test_data/test/' + str(i) +  '_image' + '.png' ,all_t_image[i] )
+            cv2.imwrite('./test_data/test/' + str(i) +  '_label' + '.png' ,all_t_label[i] )
+            cv2.imwrite('./test_data/test/' + str(i) +  '_predict' + '.png' ,all_t_predict[i] )
 
         train_log.info("-------------------save best image in  ./test_data/test/ ---------------------")
 
