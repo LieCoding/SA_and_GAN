@@ -158,7 +158,39 @@ def load_data(data_dir,image_list,output_size=(512, 384), data_process= True ):
     
     image_output = np.reshape(image_output, [len(image_output), 3, output_size[1], output_size[0]])#3通道
     label_output = np.reshape(label_output, [len(label_output), 1, output_size[1], output_size[0]])#单通道，若label不是单通道需修改
-    print('len(image_output)',len(image_output))
+    # print('len(image_output)',len(image_output))
     image_output = tf.convert_to_tensor(image_output)
     label_output = tf.convert_to_tensor(label_output)
     return image_output, label_output
+
+# 读取测试图片数据
+def load_test_data(data_dir,image_list,output_size=(512, 384)):
+
+    image_output = []
+    label_output = []
+
+    for i in range(len(image_list)):
+        image_name = os.path.join(data_dir,image_list[i])
+        label_name =image_name.replace('image','label')
+
+        image = cv2.imread(image_name)
+        label = cv2.imread(label_name,0)#读取灰度图
+
+        if image is None :
+            print(image_name,label_name)
+            print("image无数据")
+#             print(image_list)
+            sys.exit()
+        if label is None:
+            print("label无数据")
+            sys.exit()
+        naive_image,naive_label = resize_and_transpose(image,label,output_size)
+
+        image_output.append(naive_image)
+        label_output.append(naive_label)
+
+    image_output = np.reshape(image_output, [len(image_output), 3, output_size[1], output_size[0]])#3通道
+    label_output = np.reshape(label_output, [len(label_output), 1, output_size[1], output_size[0]])#单通道，若label不是单通道需修改
+
+    return image_output, label_output
+
