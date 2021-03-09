@@ -9,7 +9,7 @@ from tflib import conv2d
 tf.reset_default_graph()
 
 epoch =500   #总迭代次数
-batch_size =6
+batch_size =32
 h,w = 192, 256     # 需要输入网络的图片大小，会在读取的时候resize
 a = 0.3    # 超参数,噪声所占比例
 train_data_rate = 0.8    # 训练集所占比例，划分训练集和测试集
