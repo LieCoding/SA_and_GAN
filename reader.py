@@ -163,6 +163,83 @@ def load_data(data_dir,image_list,output_size=(512, 384), data_process= True ):
     label_output = tf.convert_to_tensor(label_output)
     return image_output, label_output
 
+
+# 读取训练图片数据
+def load_train_data(data_dir,image_list,output_size=(512, 384), data_process= True ):
+
+    image_output = []
+    label_output = []
+
+    for i in range(len(image_list)):
+        image_name = os.path.join(data_dir,image_list[i])
+        label_name =image_name.replace('image','label')
+
+        image = cv2.imread(image_name)
+        label = cv2.imread(label_name,0)#读取灰度图
+
+        if image is None :
+            print(image_name,label_name)
+            print("image无数据")
+#             print(image_list)
+            sys.exit()
+        if label is None:
+            print("label无数据")
+            sys.exit()
+        naive_image,naive_label = resize_and_transpose(image,label,output_size)
+
+        image_output.append(naive_image)
+        label_output.append(naive_label)
+
+        # 使用数据增强等操作
+        if data_process==True:
+            crop_image,crop_label = random_crop(image,label,rate=0.7)
+            crop_image,crop_label = resize_and_transpose(crop_image,crop_label,output_size)
+            image_output.append(crop_image)
+            label_output.append(crop_label)
+
+            flip_image,flip_label = horizontal_flip(image,label)
+            temp_image,temp_label = random_crop(flip_image,flip_label,rate=0.7)
+            flip_image,flip_label = resize_and_transpose(flip_image,flip_label,output_size)
+            temp_image,temp_label = resize_and_transpose(temp_image,temp_label,output_size)
+            image_output.append(flip_image)
+            label_output.append(flip_label)
+            image_output.append(temp_image)
+            label_output.append(temp_label)
+
+            gasuss_image,gasuss_label = gasuss_noise(image,label)
+            temp_image,temp_label = random_crop(gasuss_image,gasuss_label,rate=0.7)
+            gasuss_image,gasuss_label = resize_and_transpose(gasuss_image,gasuss_label,output_size)
+            temp_image,temp_label = resize_and_transpose(temp_image,temp_label,output_size)
+            image_output.append(gasuss_image)
+            label_output.append(gasuss_label)
+            image_output.append(temp_image)
+            label_output.append(temp_label)
+
+            rotate_image,rotate_label = rotate(image,label)
+            temp_image,temp_label = random_crop(rotate_image,rotate_label,rate=0.7)
+            rotate_image,rotate_label = resize_and_transpose(rotate_image,rotate_label,output_size)
+            temp_image,temp_label = resize_and_transpose(temp_image,temp_label,output_size)
+            image_output.append(rotate_image)
+            label_output.append(rotate_label)
+            image_output.append(temp_image)
+            label_output.append(temp_label)
+
+            Bright_image,Bright_label = Contrast_and_Brightness(image,label)
+            temp_image,temp_label = random_crop(Bright_image,Bright_label,rate=0.7)
+            Bright_image,Bright_label = resize_and_transpose(Bright_image,Bright_label,output_size)
+            temp_image,temp_label = resize_and_transpose(temp_image,temp_label,output_size)
+            image_output.append(Bright_image)
+            label_output.append(Bright_label)
+            image_output.append(temp_image)
+            label_output.append(temp_label)
+
+
+    image_output = np.reshape(image_output, [len(image_output), 3, output_size[1], output_size[0]])#3通道
+    label_output = np.reshape(label_output, [len(label_output), 1, output_size[1], output_size[0]])#单通道，若label不是单通道需修改
+
+    return image_output, label_output
+
+
 # 读取测试图片数据
 def load_test_data(data_dir,image_list,output_size=(512, 384)):
 
@@ -194,3 +271,12 @@ def load_test_data(data_dir,image_list,output_size=(512, 384)):
 
     return image_output, label_output
 
+def shuffle_data(image,label):
+    # 将image和标签按照同样的方式随机打乱
+    random_seed = random.randint(1,10000)
+
+    np.random.seed(random_seed)
+    np.random.shuffle(image)
+    np.random.seed(random_seed)
+    np.random.shuffle(label)
+    return image,label
