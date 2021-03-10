@@ -8,15 +8,15 @@ from tflib import conv2d
 
 tf.reset_default_graph()
 
-epoch =500   #总迭代次数
-batch_size =32
+epoch =300   #总迭代次数
+batch_size =6
 h,w = 192, 256     # 需要输入网络的图片大小，会在读取的时候resize
-a = 0.3    # 超参数,噪声所占比例
+a = 0.2    # 超参数,噪声所占比例
 train_data_rate = 0.8    # 训练集所占比例，划分训练集和测试集
 
-data_dir = './dataset_new/image'    #选择数据库
-# data_dir = './dataset_mini/image'    # 小样本测试程序用，共12张图片
-#
+# data_dir = './dataset_new/image'    #选择数据库
+data_dir = './dataset_mini/image'    # 小样本测试程序用，共12张图片
+
 data_process = True      #是否使用数据增强
 log_dir = 'log/train.log'   # 设置日志保存路径
 
@@ -112,9 +112,8 @@ train_log.info('-----train images:{} ,test images:{} ------'.format(len(train_im
 
 
 train_log.info('------------loading train and test data-------')
-# 读取所有的训练集,返回tensor格式
-train_data, train_label = reader.load_data(data_dir,train_images,output_size=(w, h),data_process= data_process)
-
+# 读取所有的训练集,返回np格式
+train_data, train_label = reader.load_train_data(data_dir,train_images,output_size=(w, h),data_process= data_process)
 
 # 读取所有的测试集,返回np格式,测试集不增强
 test_data, test_label = reader.load_test_data(data_dir,test_images,output_size=(w, h),)
@@ -122,24 +121,15 @@ test_data, test_label = reader.load_test_data(data_dir,test_images,output_size=(
 train_log.info('------------loading success----------')
 
 
-# 设置训练数据batch形式
-train_input_queue = tf.train.slice_input_producer([train_data, train_label], shuffle=True)
-train_image_batch, train_label_batch = tf.train.batch(train_input_queue, batch_size=batch_size, num_threads=8,
-                                                                capacity=12,allow_smaller_final_batch=True)
-
-
 # 定义保存模型操作
 saver = tf.train.Saver(tf.global_variables(), max_to_keep=1)
 
 best_acc = 0
 best_epoch = 0
+
 with tf.Session() as sess:
 
     sess.run(tf.global_variables_initializer())
-    sess.run(tf.local_variables_initializer())#这一行必须加，因为slice_input_producer的原因
-    coord = tf.train.Coordinator()
-    # 启动计算图中所有的队列线程
-    threads = tf.train.start_queue_runners(sess,coord)
 
     if train_or_test=='train':
 #     加载检查点，方便二次训练
@@ -158,9 +148,7 @@ with tf.Session() as sess:
     #         print('Initialize successful! current_epoch:',current_epoch)
 
         if current_epoch>=epoch:
-             # 主线程计算完成，停止所有采集数据的进程
-            coord.request_stop()
-            coord.join(threads)
+
         #     关闭会话
             sess.close()
             train_log.info("已达到循环epoch")
@@ -172,12 +160,27 @@ with tf.Session() as sess:
       #       计时用
             start = time.time()
 
-    # #         循环迭代次数
+    # #         循环迭代
+    #   每次epoch 都shuffle一次数据
+            train_data,train_label =reader.shuffle_data(train_data,train_label)
+            index = 0
             for j in range(int(len(train_images)/batch_size)+1):
 
-        #         由于批次类型为张量  这里先使用 run 获取到数据信息后再feed到网络中训练，
-                train_feed_image,train_feed_label = sess.run([train_image_batch, train_label_batch])
-                noise_z = np.random.uniform(0, 1.0, [batch_size,1,h,w])
+                if index + batch_size >= len(train_data):
+                    train_feed_image = train_data[index:]
+                    train_feed_label = train_label[index:]
+                else:
+                    train_feed_image = train_data[index:index+batch_size]
+                    train_feed_label = train_label[index:index+batch_size]
+
+
+                # 当len(train_images)/batch_size余数为0时会多算一个epoch，
+                if len(train_feed_image)==0:
+                    break
+
+                index+=batch_size
+
+                noise_z = np.random.uniform(0, 1.0, [len(train_feed_image),1,h,w])
                 feeed_noise_image = np.concatenate((train_feed_image,noise_z),axis=1)
 
         #         喂入网络的数据
@@ -216,12 +219,16 @@ with tf.Session() as sess:
             index = 0
             for itor in range(int(len(test_data)/batch_size)+1):
 
-                if index + batch_size > len(test_data):
+                if index + batch_size >= len(test_data):
                     test_feed_data = test_data[index:]
                     test_feed_label = test_label[index:]
                 else:
                     test_feed_data = test_data[index:index+batch_size]
                     test_feed_label = test_label[index:index+batch_size]
+
+                # 当len(test_feed_data)/batch_size余数为0时会多算一个epoch，
+                if len(test_feed_data)==0:
+                    break
 
                 index+=batch_size
 
@@ -241,8 +248,8 @@ with tf.Session() as sess:
             precision,recall,IoU,f1ccore = ops.get_acc(t_label,t_predict)
             # ----------------------------------------------------------------------
 
-            # 测试集acc上升就保存模型和测试图片 50 epoch后再统计
-            if best_acc < precision and current_epoch>50:
+            # 测试集acc上升且IOU在0.6以上就保存模型
+            if best_acc < precision and IoU>0.6:
                 saver.save(sess, './model/fcrn.ckpt', global_step=current_epoch)
                 best_acc = precision
                 best_epoch = current_epoch
@@ -285,7 +292,7 @@ with tf.Session() as sess:
             train_log.info("-------------------save best image in  ./data_save/final/test/ ---------------------")
             train_log.info("-------------------best epoch:"+str(best_epoch)+" bset test acc:{} recall:{} IoU:{} f1ccore:{}".format(_best_accs[0],
                                                                                     _best_accs[1],_best_accs[2],_best_accs[3]))
-            
+
             train_log.info("-------------------best epoch:"+str(best_epoch)+" bset test acc:{} recall:{} IoU:{} f1ccore:{}".format(_best_accs[0],
                                                                                     _best_accs[1],_best_accs[2],_best_accs[3]))
 
@@ -319,13 +326,16 @@ with tf.Session() as sess:
         index = 0
         for itor in range(int(len(test_data)/batch_size)+1):
 
-            if index + batch_size > len(test_data):
+            if index + batch_size >= len(test_data):
                 test_feed_data = test_data[index:]
                 test_feed_label = test_label[index:]
             else:
                 test_feed_data = test_data[index:index+batch_size]
                 test_feed_label = test_label[index:index+batch_size]
 
+            # 当len(test_feed_data)/batch_size余数为0时会多算一个epoch，
+            if len(test_feed_data)==0:
+                break
             index+=batch_size
         # 喂入网络的数据
             test_feeds = {image: test_feed_data, label: test_feed_label}
@@ -358,17 +368,12 @@ with tf.Session() as sess:
 
     else:
         print('train_or_test erro')
-         # 主线程计算完成，停止所有采集数据的进程
-        coord.request_stop()
-        coord.join(threads)
+
     #     关闭会话
         sess.close()
         train_log.info("已达到循环epoch")
         sys.exit()
 
-  # 主线程计算完成，停止所有采集数据的进程
-    coord.request_stop()
-    coord.join(threads)
 #     关闭会话
     sess.close()
 
