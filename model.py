@@ -147,6 +147,41 @@ def ResidualBlock(name, input_dim, output_dim, filter_size, inputs, resample=Non
 
     return shortcut + output
 
+def self_attention2(x,k=8,name='self_attention'):
+    with tf.variable_scope(name,reuse=tf.AUTO_REUSE):
+        # BCHW
+        batch_size, num_channels, height, width = x.get_shape().as_list()
+        # 小于k时会出现 num_channels // k = 0,调整k为通道数大小
+        if num_channels < k :
+            k = num_channels
+            
+        #3条支路卷积操作，步长为2
+        x1 = slim.conv2d(x, num_channels//k, kernel_size=[3,3], stride=2, activation_fn = None)
+        x2 = slim.conv2d(x, num_channels//k, kernel_size=[3,3], stride=2, activation_fn = None)
+        x3 = slim.conv2d(x, num_channels, kernel_size=[3,3], stride=2, activation_fn = None)
+        
+        #3条支路reshape操作，修改形状
+        x1 = tf.reshape(x1,[-1,height*width,num_channels//k])
+        x2 = tf.reshape(x2,[-1,height*width,num_channels//k])
+        x3 = tf.reshape(x2,[-1,height*width,num_channels])
+        #转置x1
+        t_x1 = tf.transpose(x1,(0,2,1))
+        #第一次矩阵相乘
+        mat_1 = tf.matmul(t_x1,x2)
+        #softmax激活函数
+        mat_1 = tf.nn.softmax(mat_1)
+     
+        #第二次矩阵相乘
+        mat_2 = tf.matmul(x3,mat_1)
+        #reshape
+        x_out = tf.reshape(mat_2,[-1,num_channels//k,height,width])
+        #反卷积
+        x_out = slim.conv2d_transpose(x_out,num_channels, kernel_size=[3, 3], stride=2, activation_fn=None)
+
+        sigma = tf.get_variable("sigma_ratio", [1], initializer=tf.constant_initializer(0.0))
+        output = x + x_out*sigma
+        return output
+
 
 def self_attention1(x,k=8,name='self_attention'):
     with tf.variable_scope(name,reuse=tf.AUTO_REUSE):
