@@ -156,14 +156,14 @@ def self_attention2(x,k=8,name='self_attention'):
             k = num_channels
             
         #3条支路卷积操作，步长为2
-        x1 = slim.conv2d(x, num_channels//k, kernel_size=[3,3], stride=2, activation_fn = None)
-        x2 = slim.conv2d(x, num_channels//k, kernel_size=[3,3], stride=2, activation_fn = None)
-        x3 = slim.conv2d(x, num_channels, kernel_size=[3,3], stride=2, activation_fn = None)
+        x1 = slim.conv2d(x, num_channels//k, kernel_size=[3,3], stride=2, activation_fn = None,data_format='NCHW')
+        x2 = slim.conv2d(x, num_channels//k, kernel_size=[3,3], stride=2, activation_fn = None,data_format='NCHW')
+        x3 = slim.conv2d(x, num_channels, kernel_size=[3,3], stride=2, activation_fn = None,data_format='NCHW')
         
         #3条支路reshape操作，修改形状
         x1 = tf.reshape(x1,[-1,height*width,num_channels//k])
         x2 = tf.reshape(x2,[-1,height*width,num_channels//k])
-        x3 = tf.reshape(x2,[-1,height*width,num_channels])
+        x3 = tf.reshape(x3,[-1,height*width,num_channels])
         #转置x1
         t_x1 = tf.transpose(x1,(0,2,1))
         #第一次矩阵相乘
@@ -176,7 +176,7 @@ def self_attention2(x,k=8,name='self_attention'):
         #reshape
         x_out = tf.reshape(mat_2,[-1,num_channels//k,height,width])
         #反卷积
-        x_out = slim.conv2d_transpose(x_out,num_channels, kernel_size=[3, 3], stride=2, activation_fn=None)
+        x_out = slim.conv2d_transpose(x_out,num_channels, kernel_size=[3, 3], stride=2, activation_fn=None,data_format='NCHW')
 
         sigma = tf.get_variable("sigma_ratio", [1], initializer=tf.constant_initializer(0.0))
         output = x + x_out*sigma
